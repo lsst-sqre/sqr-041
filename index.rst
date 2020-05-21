@@ -39,6 +39,8 @@ The authentication and authorization model for the Science Platform is still und
 This risk assessment therefore only deals with authentication and authorization at a high level and in generic terms.
 It will be revised to include a specific analysis of the authentication and authorization system as implemented once that implementation becomes more concrete.
 
+.. _SQR-039: https://sqr-039.lsst.io/
+
 .. _summary:
 
 Summary
@@ -49,13 +51,11 @@ Within that framework, the security gaps that pose the highest risk are:
 
 - :ref:`Security patching and upgrades <gap-patching>`
 - :ref:`Logging and alerting <gap-logging-alerting>`
-- :ref:`Notebook attacks on services <gap-notebook-cluster>`
 
 The top recommendations for improving the Science Platform's security posture are:
 
 - Automate or regularly schedule patching and upgrades of critical services
 - Define normal administrative activity and begin alerting on unexpected privileged actions
-- Isolate notebook pods spawned by the Notebook Aspect so that they cannot make direct network connections to internal Science Platform services and have to use the ingress.
 
 Given the wide institutional and geographic diversity of the projected user base and the accompanying lack of management of or visibility into user endpoints, the Science Platform should be designed to assume that some of its users will be compromised at any given time.
 The goal of Science Platform security measures should therefore not be to prevent any compromise, but instead to limit the number of attack points, detect successful attackers, limit the scope and damage of their activities, and cut off their access when they have been detected.
@@ -109,7 +109,7 @@ The third most likely attack pattern is compromise of the endpoint of an individ
 
 Rubin Observatory should therefore focus security efforts on patching known security vulnerabilities, avoiding obvious web security problems, detecting and cutting off abuse of stolen access credentials, limiting the damage that can be done by an individual user, and preventing escalation of access from an individual user account to Science Platform infrastructure.
 
-Given the limited value to attackers of Science Platform resources nad data, Rubin Observatory should not attempt to defend the Science Platform against :abbr:`APTs (Advanced Persistent Threats)`, state actors, or sophisticated organized crime.
+Given the limited value to attackers of Science Platform resources and data, Rubin Observatory should not attempt to defend the Science Platform against :abbr:`APTs (Advanced Persistent Threats)`, state actors, or sophisticated organized crime.
 The focus of security efforts for the Science Platform should not be on attackers with the capability to develop or purchase unknown zero-day exploits, construct novel exploit toolkits, implant hardware into endpoints, or pursue careful and sophisticated targeted phishing attacks.
 Defense against this level of attacker would not be a good use of project resources given the extremely high cost of defense and the relatively low likelihood of interest in Science Platform services by well-funded attackers.
 
@@ -167,6 +167,15 @@ This risk assessment therefore assumes that some Science Platform users will be 
 Known gaps
 ==========
 
+This is not a comprehensive look at every security control.
+(That would be a much longer document, and difficult to keep up to date.)
+Rather, this focuses on the areas most likely to cause problems or most likely to arise in a security review.
+That may be because it's an area of active threat or attacker interest, or an area where the current security controls are weak.
+
+Risks are categorized as high, medium, and low to aid in prioritization.
+Rubin Observatory has limited security resources and cannot address all recommendations here simultaneously.
+The areas marked as highest risk are the areas where the security improvements will have the largest payoff in overall Science Platform security.
+
 Summary
 -------
 
@@ -181,17 +190,25 @@ Summary
    |                  +------------------------------+--------+
    |                  | :ref:`gap-logging-alerting`  | High   |
    |                  +------------------------------+--------+
-   |                  | :ref:`gap-notebook-cluster`  | High   |
+   |                  | :ref:`gap-notebook-cluster`  | Medium |
    |                  +------------------------------+--------+
    |                  | :ref:`gap-escalation`        | Medium |
+   |                  +------------------------------+--------+
+   |                  | :ref:`gap-admin-compromise`  | Medium |
    +------------------+------------------------------+--------+
    | Software         | :ref:`gap-input`             | Medium |
+   |                  +------------------------------+--------+
+   |                  | :ref:`gap-data-handling`     | Low    |
    +------------------+------------------------------+--------+
    | Web security     | :ref:`gap-csp`               | Medium |
    +------------------+------------------------------+--------+
-   | Authentication   |                              |        |
+   | Authentication   | :ref:`gap-api-credentials`   | Medium |
+   |                  +------------------------------+--------+
+   |                  | :ref:`gap-idp-compromise`    | Low    |
    +------------------+------------------------------+--------+
-   | Abuse            |                              |        |
+   | Abuse            | :ref:`gap-abuse-content`     | Low    |
+   |                  +------------------------------+--------+
+   |                  | :ref:`gap-abuse-compute`     | Low    |
    +------------------+------------------------------+--------+
    | Data security    | :ref:`gap-data-corruption`   | Low    |
    |                  +------------------------------+--------+
@@ -251,7 +268,7 @@ Recommendations
 
 - Automate upgrade and redeployment of NGINX ingress services on a regular schedule.
   Both web servers and TLS libraries are common sources of vulnerabilities.
-- Automate or create a routine process for patching the operating system of Kuberntes nodes.
+- Automate or create a routine process for patching the operating system of Kubernetes nodes.
 - Automate or create a routine process for applying pending Kubernetes controller and node upgrades.
 - Automate or create a routine process for updating the base Docker image and other installed third-party software packages on which Science Platform services are built.
 - Create a routine process or, preferably, automation to upgrade and redeploy Internet-facing services to pick up all security patches.
@@ -295,7 +312,7 @@ Recommendations
 Notebook attacks on services
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-**Risk: High**
+**Risk: Medium**
 
 The Science Platform includes a Notebook Aspect that gives the user access to a Jupyter Notebook running within the Science Platform Kubernetes cluster.
 A Jupyter Notebook is remote code execution by design.
@@ -311,6 +328,10 @@ These concerns and recommendations also apply to any other part of the Science P
 Mitigations
 """""""""""
 
+- The impact of being able to bypass authentication once one already has aspect to a notebook is limited.
+  Most Science Platform services are likely to allow access to all authenticated users.
+  An attacker would be able to bypass quotas and access User Generated data that they should not have access to, but these are not high-value targets for most attackers.
+  The primary concern is therefore access to administrative interfaces.
 - Access to the notebook is protected by authentication.
   An attacker therefore first has to compromise a Science Platform user and then use their credentials to access the notebook, or trick a Science Platform user into running attacker code.
   However, as noted in :ref:`the summary <summary>`, it is inevitable that a Science Platform user will be compromised at some point during the project and an attacker will be able to gain notebook access.
@@ -326,7 +347,8 @@ Recommendations
   Respond to those alerts by suspending or terminating pods and investigating for malicious activity.
 
 Alternately, each Science Platform service could implement authentication and authorization directly, so that bypassing the ingress creates no meaningful change in the security of the service.
-However, this requires adding security controls to each service independently, which is considerably more work and loses the consolidation benefits of using a single service for all authentication and most authorization decisions.
+This could focus on administrative interfaces and interfaces with access to User Generated data, which is the majority of the risk.
+However, this requires adding security controls to each service independently, which is more work and loses the consolidation benefits of using a single service for all authentication and most authorization decisions.
 
 .. _gap-escalation:
 
@@ -360,9 +382,9 @@ Mitigations
 Recommendations
 """""""""""""""
 
-The primary defense is the same as recommeded for :ref:`security patching <gap-patching>`, namely:
+The primary defense is the same as recommended for :ref:`security patching <gap-patching>`, namely:
 
-- Automate or create a routine process for patching the operating system of Kuberntes nodes.
+- Automate or create a routine process for patching the operating system of Kubernetes nodes.
 - Automate or create a routine process for applying pending Kubernetes controller and node upgrades.
 
 In addition:
@@ -374,6 +396,48 @@ In addition:
   Then, if an attacker manages to escalate permissions from a Notebook Aspect pod, they would still be in a restricted environment that would limit lateral movement to other Notebook Aspect pods that would be under similar restrictions.
 - Collect system logs from Notebook Aspect pod hosts and alert on unexpected errors that may be a sign of attempted privilege escalation.
 - Collect Kubernetes API logs and alert on unexpected access patterns that may be a sign of attempted privilege escalation.
+
+.. _gap-admin-compromise:
+
+Admin account compromise
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Risk: Medium**
+
+Science Platform and Data Facility administrators will need to have administrative access to the Kubernetes cluster and all components of the Science Platform.
+An attacker who can steal their authentication credentials would get immediate, full access to the Science Platform to do whatever they wished.
+Possible routes include:
+
+- Theft of Kubernetes administrative credentials.
+- Theft of credentials to any administrative UIs (such as the web dashboards for cloud services used as part of the Science Platform).
+- Theft of credentials to directly obtain privileged access to Kubernetes nodes, which in turn would provide access to any secrets or credentials stored on those nodes.
+
+The likely avenues of compromise are compromise of an endpoint used by an administrator followed by theft of stored credentials on that endpoint, or phishing of administrator credentials.
+
+This risk as applied to Science Quality and Reliability Engineering staff is discussed in much greater detail in `SQR-037`_.
+
+Mitigations
+"""""""""""
+
+- Science Platform administrators are a small team of relatively sophisticated users who are less likely than most to click on phishing or install risky programs and more likely than most to notice strange system behavior after a compromise.
+- Most malware is automated and unlikely to exploit saved credentials.
+  It is more likely to be ransomware, adware, or to join the compromised system to an unsophisticated botnet to spread more malware.
+  This would often allow detection and remediation before project services are compromised.
+
+Recommendations
+"""""""""""""""
+
+Rubin Observatory does not have the resources available to do central device management well, and therefore should not attempt device management at all.
+Instead, Rubin Observatory should focus on recommending caution in how staff use their work computers, and on reducing the impact of a compromise.
+
+- Require two-factor authentication in some form before granting administrative access to the Science Platform.
+  This could take several forms: Require a VPN or bastion host with mandatory two-factor authentication to perform Kubernetes administrative actions, force reauthentication with two factors before taking administrative actions, and mandatory two-factor authentication for external authentication providers such as GitHub or Google that are used to protect administrative access to the Science Platform.
+- Avoid using work computers for testing unknown applications or visiting suspicious web sites, instead using mobile devices (preferred) or non-work devices without access to work credentials.
+- Be vigilant about phishing, particularly when using a work computer.
+- Prefer Git- and Slack-based work flows to direct access to services.
+- Put expiration times on locally cached credentials where possible and where it is relatively easy to acquire new credentials so that stolen credentials cannot be used indefinitely into the future.
+
+See `SQR-037`_ for more in-depth discussion.
 
 .. _gaps-software:
 
@@ -428,8 +492,41 @@ The recommended balance to strike here is to invest moderately in libraries to a
   As much as possible, implement those validity checks in standard code libraries that can be reused.
 - Data sanitization should be verified with unit tests that attempt to send a variety of invalid data.
 - All user-facing API code should be reviewed by at least one engineer other than the author, with a eye specifically to potential security vulnerabilities.
-- Where resources permit, the user-facing API surface and input validation of the most prominant Science Platform services should get a thorough code review by someone with experience in secure coding practices.
+- Where resources permit, the user-facing API surface and input validation of the most prominent Science Platform services should get a thorough code review by someone with experience in secure coding practices.
   However, this type of review can be time-consuming, and it's not realistic to ask the project to block on this review.
+
+.. _gap-data-handling:
+
+Safe data handling
+^^^^^^^^^^^^^^^^^^
+
+**Risk: Low**
+
+Some components of the Science Platform may process User Generated data.
+Carefully crafted data could be used to attack vulnerabilities in those components.
+For example, image processing libraries are notorious for vulnerabilities when processing malicious images, leading to arbitrary code execution.
+
+Mitigations
+"""""""""""
+
+- Data processing is only available to authorized users, so attacking these vulnerabilities would first require compromising the credentials of a Science Platform user.
+- Vulnerabilities of this type will often be specific to astronomy software and would therefore require targeted research or at least fuzzing to exploit.
+  Given the relatively low value of the data an attacker would be able to obtain by doing so, attackers with sufficient resources to properly attack astronomy software are unlikely to bother.
+- Most user data processing will likely be done in environments where the user will already have arbitrary code execution by design (notebooks, batch processing systems), and thus these vulnerabilities would not matter.
+
+Recommendations
+"""""""""""""""
+
+This type of attack is relatively low risk given the threat model for the science platform.
+The scope would be limited to components that process user data without providing arbitrary code execution by design.
+The lateral movement in the environment an attacker could obtain via this sort of attack is therefore unlikely to grant them substantially new access or capabilities.
+
+That said, Rubin Observatory should take reasonable precautions against obvious and trivial attacks:
+
+- Regularly upgrade underlying third-party libraries to pick up security fixes.
+  See :ref:`security patching <gap-patching>` for more details.
+- Where possible, validate user input before beginning processing, as described in :ref:`input validation <gap-input>`.
+  However, this may not be feasible with complex data formats.
 
 .. _gaps-web-security:
 
@@ -469,6 +566,177 @@ Recommendations
   For third-party components deployed in the Science Platform such as Argo CD, ideally upstream should support CSP and present a complete CSP, and Rubin Observatory could potentially assist via upstream pull requests.
   For internally-developed components, Rubin Observatory should modify those applications to send a CSP.
   Alternately, NGINX could add a CSP at the Kubernetes ingress.
+
+.. _gaps-authentication:
+
+Authentication
+--------------
+
+.. _gap-api-credentials:
+
+API credential theft
+^^^^^^^^^^^^^^^^^^^^
+
+Users of the Science Platform will be able to create API credentials that allow access to Science Platform APIs their local endpoints.
+Those credentials will be used in user-written programs and local software, including to copy data and programs from the user's local system to the file system available to the Notebook and Portal Aspects.
+
+Similar credentials will be managed by the user's web browser for access to web UIs such as the Notebook and Portal Aspects, but API credentials pose some additional security concerns.
+Rather than being stored in the user's browser automatically, they're given to the user to enter into other applications or reference in code.
+Not all users understand the importance of keeping these credentials confidential or understand how to do so.
+For example, it is common to find API credentials checked into source control repositories, which are then subsequently pushed to public repositories such as on GitHub.
+Attackers then automate the process of scanning public repositories for usable credentials.
+
+As a trade-off between security and usability, the Science Platform API credentials will also not expire until revoked.
+This increases the risk of old, unused, but still valid credentials being leaked via improper storage and later exploited by an attacker.
+
+Mitigations
+"""""""""""
+
+- Science Platform API credentials will not have access to data that is high-value for an attacker, and are therefore unlikely to be added to custom scanners.
+- It's less obvious from the credential how to use a Science Platform API credential compared to credentials for common cloud services such as AWS or Slack.
+  That said, the code with which the credential was found will often provide a clue.
+
+Recommendations
+"""""""""""""""
+
+This risk cannot be eliminated entirely without eliminating API credentials, which are a project requirement.
+However, Rubin Observatory can take some steps to limit the risk.
+
+- Provide clear instructions when providing an API credential to a user for how to store it, and caution against committing it to source control.
+- Create guided flows for common reasons for creating API credentials that restrict the scope of the credential to only the services for which it is intended.
+  This will limit the scope of any accidental exposure of the API credential.
+- Provide users with information about their API credentials, from where they are being used, and when they were last used.
+  Encourage users to clean up unused credentials and report unexpected credential use for further investigation.
+- Ensure most sensitive actions, such as changing which federated identities a user can use to authenticate, will only be accessible via a web interface and cannot be changed using API credentials.
+
+.. _gap-idp-compromise:
+
+Identity provider compromise
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Risk: Low**
+
+The Science Platform relies on federated identity and authentication via CILogon.
+This allows the Science Platform to avoid storing or managing passwords, which has numerous security and non-security advantages.
+However, it also means that the Science Platform delegates the security of its primary authentication system to third parties.
+This is true both of user access and of administrative access.
+
+Those providers fall roughly into three categories:
+
+- `CILogon`_, which provides the core authentication service.
+- Google and GitHub, commercial identity providers, which are expected to be widely chosen as authentication methods by project users and administrators.
+- Individual home institutions of users, via the InCommon, eduGAIN, and `ORCID`_ federations.
+
+.. _CILogon: https://www.cilogon.org/faq
+.. _InCommon: https://www.incommon.org/
+.. _eduGAIN: https://edugain.org/
+.. _ORCID: https://orcid.org/
+
+A compromise of CILogon would allow an attacker to impersonate any user of the Science Platform, including administrators.
+Compromise of the other providers would allow an attacker to impersonate any user that uses one of those providers.
+Compromise of the identity provider of any institution with data rights would allow an attacker to create a new account on the Science Platform without compromising an existing user, which decreases the risk of attacker detection.
+
+If one identity provider in one of the federations is compromised, it is possible that Rubin Observatory would not learn of that compromise and thus not know to check for unexpected activity from users whose Science Platform accounts are linked to that identity provider.
+
+Mitigations
+"""""""""""
+
+- Each of these identity providers are widely used for purposes other than the Science Platform.
+  Compromise of any of these identity providers would affect web authentication for the institution running that identity provider, and would likely cause larger and more immediate problems for that institution than for the Science Platform.
+  Each institution therefore has its own security team that is likely to notice and fix such compromises.
+- Google and GitHub are used by tens of millions of users or more and have world-class security and incident response teams.
+  Their security response to any incident will be far more effective than the response that Rubin Observatory could mount.
+- CILogon is similarly widely used for purposes other than the Science Platform and has its own security support.
+
+Recommendations
+"""""""""""""""
+
+To a large extent, this is a risk that Rubin Observatory should accept.
+Delegating authentication to third parties that specialize in that (CILogon, GitHub, Google) or that have to provide the authentication service and security support for it for other reasons (federated institutions) is much less risky than maintaining a Science-Platform-specific authentication system.
+However, Rubin Observatory should attempt to reduce the risk of impact from compromises that the project is not informed of.
+
+- Work with CILogon to see if there is a notification list to which Rubin Observatory could subscribe to be informed of known security breaches in federated authentication providers.
+- Notify Science Platform users of previous authentications, particularly from unexpected locations, to allow them to recognize and notify Rubin Observatory of possible compromises.
+
+.. _gaps-abuse:
+
+Abuse
+-----
+
+This section discusses abuse of the Science Platform for purposes outside of its intended use.
+This abuse would not necessarily be done by a legitimate user.
+As discussed elsewhere, it is inevitable that some users of the Science Platform will have their credentials compromised.
+It's common for attackers, particularly those whose motives are to embarrass the project or claim credit for compromising a prominent site, to use access gained via a compromise to use computing resources for fraudulent, illegal, or undesired activities.
+
+.. _gap-abuse-content:
+
+Misuse of storage and network
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Risk: Low**
+
+Attackers whose goal is to embarrass a project (due, for instance, to its affiliation with a political entity) or to claim credit for compromising a prominent site will often deface the site or use it to host illegal or unwanted content.
+Attackers also use access to web services to host malware or phishing pages to aid in compromising other sites.
+While this sort of attacker activity is unlikely to cause permanent damage, unlike ransomware, it can be embarrassing and disruptive to the project.
+Use of Science Platform resources by an attacker to serve illegal content also creates risk that Science Platform facilities would be entangled in legal action, on top of the obvious desire of the project to prevent illegal activity.
+
+Most public-facing web pages for the project are not hosted on the Science Platform.
+The Science Platform is intended for the smaller community of authorized users.
+It is therefore not a major target for web site defacement.
+`SQR-037`_ contains some discussion of web site defacement in the context of community.lsst.org, which is a more attractive target.
+
+The top concern in this area is attackers using Science Platform credentials to store and share illegal content.
+The most likely ways an attacker could do this is via outbound connections from the notebook (such as BitTorrent), or via sharing of user credentials to the same notebook environment.
+
+Mitigations
+"""""""""""
+
+- The Science Platform does not provide web hosting available to users.
+  An attacker would therefore need to compromise the infrastructure, not just a user account, to deface web sites or host web pages.
+- The Notebook Aspect doesn't allow inbound connections to the notebook, so using the notebook to serve malicious content would be difficult.
+- The number of legitimate Science Platform users is relatively low.
+  Attackers whose goal is to share illegal content normally target platforms with millions of users and large numbers of abandoned accounts, since that increases the chances that they can successfully evade detection.
+
+Recommendations
+"""""""""""""""
+
+- Limit outgoing bandwidth from notebooks.
+  The expected use of outbound Internet connections from notebooks is primarily to download software.
+  Lots of outbound data would generally be unexpected and a possible sign of abuse.
+- Detect and alert on accounts with successful authentications from a wide variety of IP addresses.
+  This is a tell-tale sign of a compromised account and possible account sharing.
+  The alerts have to be thoughtfully constructed since users do travel (including internationally).
+- Provide GeoIP information to the user about the locations from which they previously authenticated.
+  Encourage the user to report unexpected access.
+  This is difficult to do well since GeoIP databases have to be purchased and are still of fairly low quality.
+- Monitor outbound Internet connections from pods and flag for investigation connections that seem unrelated to astronomy research.
+  For instance, a notebook is unlikely to have a legitimate need to connect to a BitTorrent rendezvous service or to join a Tor network.
+
+.. _gap-abuse-compute:
+
+Misuse of compute resources
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The popularity and value of proof-of-work-based cryptocurrencies has given rise to a new attacker goal: Access to compute resources to run a cryptocurrency miner.
+This is less likely to be a primary goal than something an attacker may do with access while looking around for other interesting targets.
+Platforms designed for highly-optimized computation, particularly ones with GPUs available, are more attractive targets for this purpose than general-purpose computing.
+Attackers would therefore be more interested in a batch computing service for this purpose than the Notebook Aspect, although may run a miner on the Notebook Aspect after a successful compromise because the effort required is minimal.
+
+Mitigations
+"""""""""""
+
+- Effective cryptocurrency mining increasingly requires dedicated hardware and resources that are beyond the scale of what the Notebook Aspect would have available.
+  The payoff of cryptocurrency mining in the notebook is less likely to be worth the effort.
+- Batch computing services may have less access to the Internet, which would limit their usability for cryptocurrency mining.
+
+Recommendations
+"""""""""""""""
+
+This area is less interesting as a direct risk than as a possible attacker goal that could be used to detect an attacker and cut off their access before they do something else more dangerous.
+
+- Shut down pods that consume excessive CPU resources and report that to the pod's owner.
+  The pod owner may then realize that their account has been compromised.
+  Rubin Observatory will want to monitor CPU usage anyway, for the much more likely problem of poorly-written code or code that tries to process unexpectedly large amounts of data.
 
 .. _gaps-data:
 
@@ -518,7 +786,7 @@ The Science Platform will store some data about each user of the platform.
 This will include name, email address, linked federated identities, group membership, information provided in support of quota requests such as proposed scientific work, and access log information including IP addresses.
 Rubin Observatory has an obligation to take reasonable steps to keep this personal data private.
 
-Migitations
+Mitigations
 """""""""""
 
 - No high-value user data  such as credit card or bank account information or government identity information will be stored by the Science Platform.
@@ -586,6 +854,20 @@ Therefore, the risk of compromise that comes with a lack of endpoint security me
 
 The implication is that it is likely that user endpoints will be compromised over the lifetime of the project, and thus attackers will gain access to user credentials and be able to access the Science Platform pretending to be a legitimate user.
 This implies that the Science Platform security controls have to be at least somewhat robust against attacks from users with authenticated access to the platform.
+
+Supply-chain attacks
+--------------------
+
+Attackers are increasingly attempting to compromise widely-shared library and resource repositories, such as PyPI, NPM, and Docker Hub.
+If they are successful in doing so, they can inject malicious code into many downstream users of those services.
+This is particularly a risk when automatically deploying new upstream versions of dependencies.
+However, this risk is very hard to defend against.
+
+Rubin Observatory does not have the resources to audit and rebuild all dependencies locally or otherwise isolate itself from public code and resource repositories.
+Any successful attack of this type is likely to make headlines, and Rubin Observatory can then take remedial action retroactively.
+Attempting to defend against this attack proactively is unlikely to be successful given existing resources and is unlikely to uniquely affect the project (and thus does not pose a substantial reputational risk to the project).
+
+We should therefore accept this risk.
 
 .. _glossary:
 
