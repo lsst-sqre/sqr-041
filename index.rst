@@ -2,12 +2,6 @@
 
 .. sectnum::
 
-.. note::
-
-   **This technote is not yet published.**
-
-   A threat model, survey of risk areas, catalog of known security gaps, and recommended mitigations for the Science Platform.
-
 .. _abstract:
 
 Abstract
