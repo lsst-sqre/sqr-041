@@ -37,14 +37,24 @@ authors:
 copyright: "2020, Association of Universities for Research in Astronomy, Inc. (AURA)"
 
 # Description. A short, 1-2 sentence statemement used by document indices.
-description: "A threat model, survey of risk areas, catalog of known security gaps, and recommended mitigations for the Science Platform."
+description: >-
+  A threat model, survey of risk areas, catalog of known security gaps,
+  and recommended mitigations for the Science Platform.
 
 # Abstract, if available
-# abstract: >
-#           Write your paragraph
-#           here with multiple lines.
-#
-#           You can have multiple paragraphs too.
+abstract: >-
+  The Science Platform is a collection of software and services that
+  provides data rights holders and project team members access to the LSST
+  data and support for its scientific analysis.  This access is provided
+  via a range of cooperating interfaces (Python APIs, Web APIs, and a
+  graphical user interface), and, in addition, provides computing and
+  storage resources to users.  Users will be able to selectively share the
+  data they have stored.  An estimated 7,500 users from a wide variety of
+  institutions will have Science Platform access.
+
+  This tech note proposes a threat model for analyzing the security risks
+  of the Science Platform, catalogs known gaps under that threat model,
+  and recommends mitigations for those gaps.
 
 # URL where this document is published by Read the Docs. e.g. http://sqr-001.lsst.codes
 url: "https://sqr-041.lsst.io"
