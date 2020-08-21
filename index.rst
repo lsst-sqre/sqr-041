@@ -7,7 +7,7 @@
 Abstract
 ========
 
-The Science Platform is a collection of software and services that provides data rights holders and Vera C. Rubin Observatory team members access to the LSST data and support for its scientific analysis.
+The Rubin Science Platform (RSP) is a collection of software and services that provides data rights holders and Vera C. Rubin Observatory team members access to the LSST data and support for its scientific analysis.
 This access is provided via a range of cooperating interfaces (Python APIs, Web APIs, and a graphical user interface), and, in addition, provides computing and storage resources to users.
 Users will be able to selectively share the data they have stored.
 An estimated 7,500 users from a wide variety of institutions will have Science Platform access.
@@ -29,11 +29,12 @@ For a related discussion of internal services maintained by the Science Quality 
 .. _SQR-037: https://sqr-037.lsst.io/
 
 The authentication and authorization model for the Science Platform is still under development.
-(See `SQR-039`_ for some current discussion.)
+(See `SQR-039`_ and `SQR-044`_ for some current discussion.)
 This risk assessment therefore only deals with authentication and authorization at a high level and in generic terms.
 It will be revised to include a specific analysis of the authentication and authorization system as implemented once that implementation becomes more concrete.
 
 .. _SQR-039: https://sqr-039.lsst.io/
+.. _SQR-044: https://sqr-044.lsst.io/
 
 .. _summary:
 
@@ -43,12 +44,13 @@ Summary
 Security efforts for the Science Platform should focus on closing known vulnerabilities and defending against attackers doing mass vulnerability scans or using off-the-shelf exploit toolkits.
 Within that framework, the security gaps that pose the highest risk are:
 
-- :ref:`Security patching and upgrades <gap-patching>`
+- :ref:`Kubernetes hardening <gap-kubernetes>`
 - :ref:`Logging and alerting <gap-logging-alerting>`
 
 The top recommendations for improving the Science Platform's security posture are:
 
-- Automate or regularly schedule patching and upgrades of critical services
+- Add a ``PodSecurityPolicy`` and hardening configuration to Science Platform services
+- Isolate Notebook Aspect pods and their associated user-controlled resources from other services within the same Kubernetes cluster
 - Define normal administrative activity and begin alerting on unexpected privileged actions
 
 Given the wide institutional and geographic diversity of the projected user base and the accompanying lack of management of or visibility into user endpoints, the Science Platform should be designed to assume that some of its users will be compromised at any given time.
@@ -180,9 +182,11 @@ Summary
    +------------------+------------------------------+--------+
    | Class            | Gap                          | Risk   |
    +==================+==============================+========+
-   | Infrastructure   | :ref:`gap-patching`          | High   |
+   | Infrastructure   | :ref:`gap-logging-alerting`  | High   |
    |                  +------------------------------+--------+
-   |                  | :ref:`gap-logging-alerting`  | High   |
+   |                  | :ref:`gap-kubernetes`        | High   |
+   |                  +------------------------------+--------+
+   |                  | :ref:`gap-patching`          | Medium |
    |                  +------------------------------+--------+
    |                  | :ref:`gap-notebook-cluster`  | Medium |
    |                  +------------------------------+--------+
@@ -216,62 +220,6 @@ Summary
 Infrastructure
 --------------
 
-.. _gap-patching:
-
-Security patching
-^^^^^^^^^^^^^^^^^
-
-**Risk: High**
-
-Due to the distributed user population, the Science Platform is Internet-accessible by design.
-This means there is a substantial Internet-facing attack surface, which increases the risk of vulnerabilities in software used by the Science Platform.
-This is also the most likely attack vector for both opportunistic mass scanning attacks and more targeted attacks attempting to deface project web sites or to embarrass the project.
-
-The Science Platform is deployed on top of Kubernetes, which reduces the risk of local compromise of a service since the attacker will be confined to the container.
-However, container escapes are not uncommon, which could allow lateral movement between pods on the same host, or between hosts within the Data Facility.
-An attacker would also be able to intercept traffic, attack internal services and backend storage, and steal security credentials and sensitive data traveling through the compromised pod.
-
-Therefore, all software that is part of a plausible attack path should be regularly patched for security vulnerabilities.
-Attack path analysis to determine if a given security vulnerability in a software component affects the Science Platform is difficult, costly, and error-prone, and it is difficult to be certain that a given upgrade has no security implications.
-Best practice is therefore to routinely upgrade all software dependencies to the latest stable release.
-
-That said, this will not be possible for all Science Platform code.
-There is a large amount of locally-developed code underlying components of the Science Platform, some of which includes complex, multi-layered dependencies that are difficult to upgrade.
-For that software, the security risk has to be balanced against the stability and resource risk of constant upgrades, and other techniques should be used to mitigate the risk.
-See :ref:`Input sanitization <gap-input>` and :ref:`Content security policy <gap-csp>`.
-
-Regular patching is the most critical for compiled binaries in non-memory-safe languages that are part of the external attack surface such as NGINX or Python Docker images.
-Many of those components can be patched independently of the complex Rubin-specific code, and should be.
-Regular patching is less critical for underlying libraries in memory-safe languages, such as Python libraries.
-
-Software upgrades are currently done opportunistically or as a side effect of other operational work, which means that stable services that don't need new features may be left unpatched for extended periods of time.
-For instance, there currently isn't a process to be notified of a new NGINX security vulnerability and patch the Science Platform NGINX Kubernetes ingress.
-Similarly, there should be a systematic process for patching the kernels of the hosts running the Science Platform Kubernetes pods.
-
-Known, unpatched security vulnerabilities are the most common vector for successful compromises.
-
-Mitigations
-"""""""""""
-
-- The Internet-facing attack surface always passes through an NGINX ingress that terminates both TLS and HTTP, which avoids TLS and HTTP protocol attacks except those against NGINX.
-- Cloud providers are used for many vulnerability-prone services such as DNS, reducing the attack surface.
-- Nearly all Science Platform components use memory-safe languages (Python, Go, JavaScript, Java) to interact with user-provided data and requests, avoiding many common remote vulnerabilities.
-
-Recommendations
-"""""""""""""""
-
-- Automate upgrade and redeployment of NGINX ingress services on a regular schedule.
-  Both web servers and TLS libraries are common sources of vulnerabilities.
-- Automate or create a routine process for patching the operating system of Kubernetes nodes.
-- Automate or create a routine process for applying pending Kubernetes controller and node upgrades.
-- Automate or create a routine process for updating the base Docker image and other installed third-party software packages on which Science Platform services are built.
-- Create a routine process or, preferably, automation to upgrade and redeploy Internet-facing services to pick up all security patches.
-  This may not be possible for Science Platform services with complex dependencies, but there are many simpler components for which this is possible.
-- Monitor and alert on failure to upgrade any of the above services or components within an acceptable window.
-- Upgrade dependencies, rebuild, and redeploy all services, even those that are not Internet-facing, on a regular schedule to pick up security patches.
-  This is less important than Internet-facing services, but will close vulnerabilities that are indirectly exploitable, and also spreads operational load of upgrades out over time.
-  This schedule can be less aggressive than the one for Internet-facing services, and must be balanced against the stability requirements of Science Platform components.
-
 .. _gap-logging-alerting:
 
 Logging and alerting
@@ -301,6 +249,117 @@ Recommendations
   One possible alerting strategy is to route unexpected events to a Slack bot that will query the person who supposedly took that action for confirmation that they indeed took that action, with two-factor authentication confirmation.
   If this is done only for discouraged paths for admin actions, such as direct Kubernetes commands instead of using Argo CD, it doubles as encouragement to use the standard configuration management system.
 
+.. _gap-kubernetes:
+
+Kubernetes hardening
+^^^^^^^^^^^^^^^^^^^^
+
+**Risk: High**
+
+Default Kubernetes security settings for both clusters and pods are optimized for quick usability rather than security.
+The shared platform and arbitrary code execution nature of the Science Platform Notebook Aspect calls for additional hardening beyond the Kubernetes defaults.
+In addition, the Science Platform will comprise multiple services, some of which will be pinned to specific versions of a software stack for science reasons or which are provided by third parties, and thus may not be possible to regularly patch for security vulnerabilities.
+(See :ref:`Security patching <gap-patching>`.)
+This increases the chances that an attacker may be able to compromise a service pod, and thus the need to harden the Kubernetes infrastructure itself against a compromised pod.
+
+Kubernetes pods run within Linux namespaces and thus may make use of Linux hardening and access control features.
+Many security settings will hamper an attacker even if they are able to escape some namespaces.
+
+The Interim Data Facility is expected to be hosted in the cloud.
+Cloud Kubernetes environments have their own additional hardening options and configuration which can be enabled to limit the damage an attacker can do after compromising a pod.
+
+Mitigations
+"""""""""""
+
+- The Interim Data Facility is expected to be hosted in a cloud Kubernetes environment, and thus will benefit from the hardening that the cloud provider does by default.
+- Each application in the Science Platform is isolated in its own namespace.
+
+Recommendations
+"""""""""""""""
+
+The following recommendations apply to all Kubernetes environments:
+
+- Add a cluster-wide ``PodSecurityPolicy`` that enables the generally-desirable hardening options, and enable the Pod Security Policy admission controller.
+  This should disable privileged containers, use a read-only root file system, disable privilege escalation, disable running containers as root, and restrict capabilities.
+  See the `Kubernetes recommended restricted policy <https://kubernetes.io/docs/concepts/security/pod-security-standards/>`__.
+- Set ``automountServiceAccountToken`` to ``false`` for all service accounts or pods by default, leaving it enabled only for those pods that need to talk to Kubernetes.
+- Specify resource limits for all pods.
+
+If the Interim Data Facility is hosted in the cloud, that cluster should also be hardened according to best practices for that cloud provider.
+For example, the following recommendations would be appropriate for :abbr:`GKE (Google Kubernetes Engine)`.
+Other cloud providers will have similar features that differ in the details.
+
+- Create a Google Cloud Identity organization and restrict access to members of that organization.
+  This will enable access to the Google Security Command Center to monitor the security configuration of the Kubernetes clusters.
+  See :ref:`Google authentication <gap-google-auth>`.
+- Enable shielded GKE nodes with secure boot.
+- Use the ``cos_containerd`` image for all node pools.
+- Enable Workload Identity and ensure all services that need access to Google Cloud services work properly with it.
+  This will also block unwanted access to Google Compute Engine metadata services.
+- Restrict cluster discovery permissions to only service accounts plus the Google Cloud Identity organization.
+- Restrict network access to the control plane and nodes.
+  This is challenging because the recommended way to do this is to use a VPN to link the Kubernetes network with a corporate network, which poses various challenges.
+  However, exposing the cluster to the Internet is a significant increase in attack surface and therefore risk.
+  The easiest approach may be a bastion hosted in :abbr:`GCE (Google Compute Engine)`.
+
+Also see :ref:`Notebook attacks on services <gap-notebook-cluster>` and :ref:`Notebook privilege escalation <gap-escalation>`.
+
+.. _gap-patching:
+
+Security patching
+^^^^^^^^^^^^^^^^^
+
+**Risk: Medium**
+
+Due to the distributed user population, the Science Platform is Internet-accessible by design.
+This means there is a substantial Internet-facing attack surface, which increases the risk of vulnerabilities in software used by the Science Platform.
+This is also the most likely attack vector for both opportunistic mass scanning attacks and more targeted attacks attempting to deface project web sites or to embarrass the project.
+
+The Science Platform is deployed on top of Kubernetes, which reduces the risk of local compromise of a service since the attacker will be confined to the container.
+However, container escapes are not uncommon, which could allow lateral movement between pods on the same host, or between hosts within the Data Facility.
+An attacker would also be able to intercept traffic, attack internal services and backend storage, and steal security credentials and sensitive data traveling through the compromised pod.
+
+Therefore, all software that is part of a plausible attack path should be regularly patched for security vulnerabilities.
+Attack path analysis to determine if a given security vulnerability in a software component affects the Science Platform is difficult, costly, and error-prone, and it is difficult to be certain that a given upgrade has no security implications.
+Best practice is therefore to routinely upgrade all software dependencies to the latest stable release.
+
+That said, this will not be possible for all Science Platform code.
+There is a large amount of locally-developed code underlying components of the Science Platform, some of which includes complex, multi-layered dependencies that are difficult to upgrade.
+For that software, the security risk has to be balanced against the stability and resource risk of constant upgrades, and other techniques should be used to mitigate the risk.
+See :ref:`Input sanitization <gap-input>` and :ref:`Content security policy <gap-csp>`.
+
+Regular patching is the most critical for compiled binaries in non-memory-safe languages that are part of the external attack surface such as NGINX or Python Docker images.
+Many of those components can be patched independently of the complex Rubin-specific code, and should be.
+Regular patching is less critical for underlying libraries in memory-safe languages, such as Python libraries.
+
+Software updates for external components managed by Rubin Observatory are handled via automated pull requests.
+Upgrades for components of the Science Platform, however, are currently done opportunistically or as a side effect of other operational work, which means that stable services that don't need new features may be left unpatched for extended periods of time.
+
+Known, unpatched security vulnerabilities are the most common vector for successful compromises.
+
+Mitigations
+"""""""""""
+
+- The Internet-facing attack surface always passes through an NGINX ingress that terminates both TLS and HTTP, which avoids TLS and HTTP protocol attacks except those against NGINX.
+- The combination of GitHub Dependabot, WhiteSource Renovate, and `neophile <https://neophile.lsst.io/>`__ create automated PRs for updates to external Helm charts deployed by :abbr:`SQuaRE (Science Quality and Reliabilty Engineering)` and for the authentication infrastructure.
+- Cloud providers are used for many vulnerability-prone services such as DNS, reducing the attack surface.
+- Nearly all Science Platform components use memory-safe languages (Python, Go, JavaScript, Java) to interact with user-provided data and requests, avoiding many common remote vulnerabilities.
+
+Recommendations
+"""""""""""""""
+
+- Automate upgrade and redeployment of NGINX ingress services on a regular schedule.
+  Both web servers and TLS libraries are common sources of vulnerabilities.
+- Automate or create a routine process for patching the operating system of Kubernetes nodes.
+- Automate or create a routine process for applying pending Kubernetes controller and node upgrades.
+- Automate or create a routine process for updating the base Docker image and other installed third-party software packages on which Science Platform services are built.
+- Create a routine process or, preferably, automation to upgrade and redeploy Internet-facing services to pick up all security patches.
+  This may not be possible for Science Platform services with complex dependencies, but there are many simpler components for which this is possible.
+- Monitor and alert on failure to upgrade any of the above services or components within an acceptable window.
+- Upgrade dependencies, rebuild, and redeploy all services, even those that are not Internet-facing, on a regular schedule to pick up security patches.
+  This is less important than Internet-facing services, but will close vulnerabilities that are indirectly exploitable, and also spreads operational load of upgrades out over time.
+  This schedule can be less aggressive than the one for Internet-facing services, and must be balanced against the stability requirements of Science Platform components.
+
 .. _gap-notebook-cluster:
 
 Notebook attacks on services
@@ -317,6 +376,10 @@ The authentication model for services in the Science Platform applies authentica
 However, connections from inside the Kubernetes cluster can bypass the ingress and access the underlying service directly.
 This could allow an attacker to bypass authentication controls, claim to be any user, attack services that depend on authorization for their security, and otherwise move laterally through the Kubernetes cluster.
 
+To allow the user to spawn helper `Dask`_ nodes, pods have a service account and Kubernetes credentials, so they have access to the Kubernetes control plane.
+
+.. _Dask: https://dask.org/
+
 These concerns and recommendations also apply to any other part of the Science Platform that allows execution of arbitrary user-provided code, such as a batch processing cluster.
 
 Mitigations
@@ -325,24 +388,22 @@ Mitigations
 - The impact of being able to bypass authentication once one already has aspect to a notebook is limited.
   Most Science Platform services are likely to allow access to all authenticated users.
   An attacker would be able to bypass quotas and access User Generated data that they should not have access to, but these are not high-value targets for most attackers.
-  The primary concern is therefore access to administrative interfaces.
+  The primary concern is therefore access to administrative interfaces and bypass of ACLs on User-Generated Data.
 - Access to the notebook is protected by authentication.
   An attacker therefore first has to compromise a Science Platform user and then use their credentials to access the notebook, or trick a Science Platform user into running attacker code.
   However, as noted in :ref:`the summary <summary>`, it is inevitable that a Science Platform user will be compromised at some point during the project and an attacker will be able to gain notebook access.
 - Users may notice and notify Rubin Observatory staff of attacker use of their notebooks.
+- The access of the Notebook Aspect service account is restricted using a ``Role`` and limited to the user's namespace.
 
 Recommendations
 """""""""""""""
 
-- Isolate Notebook Aspect pods, and any other Science Platform services that provide arbitrary code execution, to their own network environment.
+- Enable network policy enforcement in the Kubernetes cluster.
+  Isolate the Notebook Aspect pods, and any other Science Platform services that provide arbitrary code execution, using a network policy.
   Require that they talk to other Science Platform services via an ingress rather than direct connections to other cluster services.
 - For those services that must be accessible from the notebook pods, such as other components of JupyterHub, ensure that those services require and check authentication credentials.
 - Log and alert on unexpected patterns of access from notebooks, such as large numbers of failing requests or requests to routes that the Notebook Aspect would have no reason to access.
   Respond to those alerts by suspending or terminating pods and investigating for malicious activity.
-
-Alternately, each Science Platform service could implement authentication and authorization directly, so that bypassing the ingress creates no meaningful change in the security of the service.
-This could focus on administrative interfaces and interfaces with access to User Generated data, which is the majority of the risk.
-However, this requires adding security controls to each service independently, which is more work and loses the consolidation benefits of using a single service for all authentication and most authorization decisions.
 
 .. _gap-escalation:
 
@@ -384,9 +445,7 @@ The primary defense is the same as recommended for :ref:`security patching <gap-
 In addition:
 
 - Ensure Notebook Aspect pods are run with as restrictive of a pod security policy as possible given the required use of those pods.
-- Minimize Kubernetes service account permissions granted to Notebook Aspect pods.
 - Isolate user Notebook Aspect pods on their own hosts that are not shared with other Science Platform services.
-  Ideally this should be combined with the network restrictions discussed under :ref:`notebook attacks on services <gap-notebook-cluster>`.
   Then, if an attacker manages to escalate permissions from a Notebook Aspect pod, they would still be in a restricted environment that would limit lateral movement to other Notebook Aspect pods that would be under similar restrictions.
 - Collect system logs from Notebook Aspect pod hosts and alert on unexpected errors that may be a sign of attempted privilege escalation.
 - Collect Kubernetes API logs and alert on unexpected access patterns that may be a sign of attempted privilege escalation.
@@ -619,7 +678,7 @@ Those providers fall roughly into three categories:
 
 - `CILogon`_, which provides the core authentication service.
 - Google and GitHub, commercial identity providers, which are expected to be widely chosen as authentication methods by project users and administrators.
-- Individual home institutions of users, via the InCommon, eduGAIN, and `ORCID`_ federations.
+- Individual home institutions of users, via the `InCommon`_, `eduGAIN`_, and `ORCID`_ federations.
 
 .. _CILogon: https://www.cilogon.org/faq
 .. _InCommon: https://www.incommon.org/
@@ -926,3 +985,13 @@ XSS
     One of the most common web vulnerabilities and attacks.
     Takes advantage of inadequate escaping or other security flaws in a web application to trick a user's web browser into running JavaScript or other code supplied by the attacker in the user's security context.
     Can be used to steal authentication credentials such as cookies, steal other confidential data, or phish the user.
+
+Changes
+=======
+
+2020-08-21
+----------
+
+- Update analysis, mitigations, and recommendations for the work that was done on :ref:`Security patching <gap-patching>`.
+- Add :ref:`Kubernetes hardening <gap-kubernetes>` and mark it as one of the highest risk areas.
+- Update :ref:`Notebook attacks on servces <gap-notebook-cluster>` to recommend enabling network policy enforcement and adding network policies to restrict what services Notebook Aspect pods can access.
