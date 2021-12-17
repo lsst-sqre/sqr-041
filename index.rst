@@ -301,7 +301,8 @@ Recommendations
 The following recommendations apply to all Kubernetes environments:
 
 - Add a cluster-wide ``PodSecurityPolicy`` that enables the generally-desirable hardening options, and enable the Pod Security Policy admission controller.
-  This should disable privileged containers, use a read-only root file system, disable privilege escalation, disable running containers as root, and restrict capabilities.
+  This should disable privileged containers, use a read-only root file system, disable ``hostPath`` mounts on most clusters, disable privilege escalation, disable running containers as root, and restrict capabilities.
+  Services that have to create privileged containers will need a separate ``PodSecurityPolicy`` bound to their service accounts.
   See the `Kubernetes recommended restricted policy <https://kubernetes.io/docs/concepts/security/pod-security-standards/>`__.
 - Set ``automountServiceAccountToken`` to ``false`` for all service accounts or pods by default, leaving it enabled only for those pods that need to talk to Kubernetes.
 - Ensure all pods other than special privileged containers are configured to run as a non-root user with privilege escalation and capabilities disabled and a read-only root file system.
@@ -309,6 +310,8 @@ The following recommendations apply to all Kubernetes environments:
   (Egress restrictions would be ideal but may be too difficult to maintain.)
 - Specify resource limits for all pods.
 - Use the GKE Sandbox for services where possible.
+- Scan Kubernetes environments for all objects not managed by Argo CD and alert on anything unexpected.
+- Review ``get``, ``list``, and ``watch`` access to secrets and remove it where possible.
 
 For the Interim Data Facility hosted on :abbr:`GKE (Google Kubernetes Engine)`, the following additional recommendations have not yet been implemented:
 
@@ -446,6 +449,9 @@ In order to enable this feature, user notebook pods are granted the ability to l
 
 Because there is no current ``PodSecurity`` policy in place, this grants Science Platform users the ability to run arbitrary pods with arbitrary privileges, including privileged pods.
 That in turn could be used to undermine the security of the cluster, since Kubernetes is not hardened against privileged pods.
+
+Also, in order to create the per-user service accounts required to support Dask, JupyterHub has Kuberentes access to create ``RoleBindings``.
+That in turn may allow a compromised JupyterHub service to create a service account bound to a privileged role and from there compromise the cluster.
 
 Recommendations
 """""""""""""""
@@ -1107,6 +1113,12 @@ XSS
     Takes advantage of inadequate escaping or other security flaws in a web application to trick a user's web browser into running JavaScript or other code supplied by the attacker in the user's security context.
     Can be used to steal authentication credentials such as cookies, steal other confidential data, or phish the user.
 
+References
+==========
+
+- `Threat matrix for Kubernetes <https://www.microsoft.com/security/blog/2020/04/02/attack-matrix-kubernetes/>`__ and its update, `Secure containerized environments with updated threat matrix for Kubernetes <https://www.microsoft.com/security/blog/2021/03/23/secure-containerized-environments-with-updated-threat-matrix-for-kubernetes/>`__.
+- `CIS Google Kubernetes Engine (GKE) Benchmark v1.2.0 <https://www.cisecurity.org/>`__
+
 Changes
 =======
 
@@ -1120,6 +1132,7 @@ Changes
 - Add :ref:`CSRF and credential leakage <gap-csrf>` and mark it as high.
   Reference `DMTN-193`_ for a complete discussion of web security concerns for the Science Platform.
 - Downgrade the :ref:`Kubernetes hardening <gap-kubernetes>` risk to medium thanks to the hardening work that has been completed.
+  Add additional recommendations after reviewing more Kubernetes security analyses.
 - Recommend using the new GitHub OpenID Connect support for Terraform authentication.
 - Update the analysis in multiple places to reflect the Interim Data Facility deployment and the upcoming US Data Facility deployment.
 - Update the analysis of :ref:`Security patching <gap-patching>` to reflect completed work.
