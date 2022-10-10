@@ -278,7 +278,7 @@ Recommendations
 .. _gap-databases:
 
 Infrastructure databases
-------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^
 
 **Risk: High**
 
@@ -1243,6 +1243,17 @@ References
 
 Changes
 =======
+
+2022-10-10
+----------
+
+- Add :ref:`Infrastructure data stores <gap-databases>` and mark it high risk.
+- Add :ref:`Butler data access <gap-butler-auth>` and mark it high risk.
+- Replace the recommendations section for :ref:`Dask access for notebooks <gap-dask>` with a reference to SQR-066_, and note SQR-066_ in discussions of other security recommendations that it would address.
+- Add a discussion of Kubernetes secrets to :ref:`accepted-risks`.
+- Replace references to ``PodSecurityPolicy`` (which has been deprecated) with references to the ``PodSecurity`` admission controller and Pod Security Standards.
+- Add a list of services that need work on pod hardening or ``NetworkPolicy``.
+- Reference the authentication and authorization document series for more details about user authentication.
 
 2021-12-17
 ----------
