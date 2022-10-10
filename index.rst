@@ -8,9 +8,13 @@ Abstract
 The Rubin Science Platform (RSP) is a collection of software and services that provides data rights holders and Vera C. Rubin Observatory team members access to the LSST data and support for its scientific analysis.
 This access is provided via a range of cooperating interfaces (Python APIs, web APIs, and a graphical user interface), and, in addition, provides computing and storage resources to users.
 Users will be able to selectively share the data they have stored.
-An estimated 7,500 users from a wide variety of institutions will have Science Platform access.
+An estimated 10,000 users from a wide variety of institutions will have Science Platform access.
 
 This tech note proposes a threat model for analyzing the security risks of the Science Platform, catalogs known gaps under that threat model, and recommends mitigations for those gaps.
+
+The configuration discussed in this tech note is implemented by Phalanx_, the Kubernetes configuration for the Rubin Science Platform.
+
+.. _Phalanx: https://phalanx.lsst.io/
 
 .. _scope:
 
@@ -284,22 +288,22 @@ Cloud Kubernetes environments, such as that used by the Interim Data Facility, h
 Mitigations
 """""""""""
 
-- Significant progress has been made in standardizing on the Kubernetes hardening configuration documented in `SQR-048`_.
-- The Interim Data Facility is expected to be hosted in a cloud Kubernetes environment, and thus will benefit from the hardening that the cloud provider does by default.
+- ``automountServiceAccountToken`` is set to ``false`` for all pods except those that have a specific need to talk to the Kubernetes API.
+- Most pods have security hardening applied.
+- Most services define a ``NetworkPolicy``.
+- The Interim Data Facility and expected Cloud Data Facility will be hosted in a cloud Kubernetes environment, and thus will benefit from the hardening that the cloud provider does by default.
 - Each application in the Science Platform is isolated in its own namespace.
-
-.. _SQR-048: https://sqr-048.lsst.io/
 
 Recommendations
 """""""""""""""
 
-The following recommendations apply to all Kubernetes environments:
+Implement the remainder of the hardening recommendations documented in SQR-048_.
+Specifically, for all Kubernetes environments:
 
-- Add a cluster-wide ``PodSecurityPolicy`` that enables the generally-desirable hardening options, and enable the Pod Security Policy admission controller.
-  This should disable privileged containers, use a read-only root file system, disable ``hostPath`` mounts on most clusters, disable privilege escalation, disable running containers as root, and restrict capabilities.
-  Services that have to create privileged containers will need a separate ``PodSecurityPolicy`` bound to their service accounts.
-  See the `Kubernetes recommended restricted policy <https://kubernetes.io/docs/concepts/security/pod-security-standards/>`__.
-- Set ``automountServiceAccountToken`` to ``false`` for all service accounts or pods by default, leaving it enabled only for those pods that need to talk to Kubernetes.
+.. _SQR-048: https://sqr-048.lsst.io/
+
+- Implement a cluster-wide default restricted `Pod Security Standard`_ policy enforced with an admission controller.
+  This will force use of pod hardening best practices except for those services that require special exceptions because they need to run privileged containers.
 - Ensure all pods other than special privileged containers are configured to run as a non-root user with privilege escalation and capabilities disabled and a read-only root file system.
 - Define ``NetworkPolicy`` resources for all pods that restrict at least the ingress.
   (Egress restrictions would be ideal but may be too difficult to maintain.)
@@ -308,16 +312,35 @@ The following recommendations apply to all Kubernetes environments:
 - Scan Kubernetes environments for all objects not managed by Argo CD and alert on anything unexpected.
 - Review ``get``, ``list``, and ``watch`` access to secrets and remove it where possible.
 
+The following Phalanx_ applications currently do not follow the pod hardening recommendations:
+
+- portal
+- postgres (internal PostgreSQL server)
+- tap
+- tap-schema
+
+Third-party Helm charts have also not been thoroughly reviewed.
+
+The following Phalanx_ applications do not yet have a ``NetworkPolicy`` defined and should, or if they do have a ``NetworkPolicy``, it is not sufficiently restrictive:
+
+- noteburst
+- nublado2 (JupyterHub for the Notebook Aspect)
+- plot-navigator
+- postgres (internal PostgreSQL server)
+- tap-schema
+
+.. _Pod Security Standard: https://kubernetes.io/docs/concepts/security/pod-security-standards/
+
 For the Interim Data Facility hosted on :abbr:`GKE (Google Kubernetes Engine)`, the following additional recommendations have not yet been implemented:
 
 - Restrict cluster discovery permissions to only service accounts plus the Google Cloud Identity organization instead of the default of ``system:authenticated``.
-  (This will be unnecessary if the cluster is made private.)
+  (This will be unnecessary if the cluster is made private, as described in the next bullet point.)
 - Restrict network access to the control plane and nodes.
   This is challenging because the recommended way to do this is to use a VPN to link the Kubernetes network with a corporate network, which poses various challenges.
   However, exposing the cluster to the Internet is a significant increase in attack surface and therefore risk.
   The easiest approach may be a bastion hosted in :abbr:`GCE (Google Compute Engine)`.
 
-See `SQR-048`_ for more details on the Kubernetes hardening recommendations.
+See SQR-048_ for more details on the Kubernetes hardening recommendations.
 
 Also see :ref:`Notebook attacks on services <gap-notebook-cluster>` and :ref:`Notebook privilege escalation <gap-escalation>`.
 
