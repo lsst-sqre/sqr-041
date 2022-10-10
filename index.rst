@@ -1,7 +1,5 @@
 :tocdepth: 1
 
-.. sectnum::
-
 .. _abstract:
 
 Abstract
@@ -10,19 +8,23 @@ Abstract
 The Rubin Science Platform (RSP) is a collection of software and services that provides data rights holders and Vera C. Rubin Observatory team members access to the LSST data and support for its scientific analysis.
 This access is provided via a range of cooperating interfaces (Python APIs, web APIs, and a graphical user interface), and, in addition, provides computing and storage resources to users.
 Users will be able to selectively share the data they have stored.
-An estimated 7,500 users from a wide variety of institutions will have Science Platform access.
+An estimated 10,000 users from a wide variety of institutions will have Science Platform access.
 
 This tech note proposes a threat model for analyzing the security risks of the Science Platform, catalogs known gaps under that threat model, and recommends mitigations for those gaps.
+
+The configuration discussed in this tech note is implemented by Phalanx_, the Kubernetes configuration for the Science Platform.
+
+.. _Phalanx: https://phalanx.lsst.io/
 
 .. _scope:
 
 Scope
 =====
 
-This security risk assessment covers the Science Platform as defined by `LDM-542`_ and `LDM-554`_.
+This security risk assessment covers the Science Platform as defined by LDM-542_ and LDM-554_.
 It discusses Vera C. Rubin Observatory infrastructure only insofar as it supports the Science Platform and does not analyze the security of other project facilities.
 It also does not cover other installations of the Notebook Aspect of the Science Platform outside of the Science Platform itself, such as at the Summit facility or the various project-internal test facilities.
-For a related discussion of internal services maintained by the Science Quality and Reliability Engineering team, see `SQR-037`_.
+For a related discussion of internal services maintained by the Science Quality and Reliability Engineering team, see SQR-037_.
 
 .. _LDM-542: https://ldm-542.lsst.io/
 .. _LDM-554: https://ldm-554.lsst.io/
@@ -31,17 +33,13 @@ For a related discussion of internal services maintained by the Science Quality 
 This risk assessment only covers risks associated with the data that will be released for general users of the Science Platform.
 It does not discuss security risks of data and processing prior to or not included in that data release, such as prompt processing, unreleased raw images, security of the telescope itself and its related support equipment, or transfer of data to repositories used by the Science Pipeline.
 
-The authentication and authorization model for the Science Platform is still under development.
-(See `SQR-039`_, `SQR-044`_, `SQR-045`_, `SQR-046`_, `SQR-049`_, and `SQR-055`_ for current discussion.)
-This risk assessment therefore only deals with authentication and authorization at a high level and in generic terms.
-It will be revised to include a specific analysis of the authentication and authorization system as implemented once that implementation becomes more concrete.
+The authentication and authorization model for the Science Platform is discussed in detail in DMTN-234_, DMTN-224_, and SQR-069_.
+Those details will not be repeated here; instead, only known issues and limitations that affect the overall security of the platform will be noted.
+For a much deeper analysis of authentication and authorization, see those documents.
 
-.. _SQR-039: https://sqr-039.lsst.io/
-.. _SQR-044: https://sqr-044.lsst.io/
-.. _SQR-045: https://sqr-045.lsst.io/
-.. _SQR-046: https://sqr-046.lsst.io/
-.. _SQR-049: https://sqr-049.lsst.io/
-.. _SQR-055: https://sqr-055.lsst.io/
+.. _DMTN-234: https://dmtn-234.lsst.io/
+.. _DMTN-224: https://dmtn-224.lsst.io/
+.. _SQR-069: https://sqr-069.lsst.io/
 
 .. _summary:
 
@@ -52,16 +50,22 @@ Security efforts for the Science Platform should focus on closing known vulnerab
 Within that framework, the security gaps that pose the highest risk are:
 
 - :ref:`Dask access for notebooks <gap-dask>`
-- :ref:`Logging and alerting <gap-logging-alerting>`
+- :ref:`Butler data access <gap-butler-auth>`
+- :ref:`Infrastructure data stores <gap-databases>`
 - :ref:`CSRF and credential leakage <gap-csrf>`
+- :ref:`Logging and alerting <gap-logging-alerting>`
 
 The top recommendations for improving the Science Platform's security posture are:
 
-- Replace Dask's direct Kubernetes access with a separate authenticated service, or add a ``PodSecurityPolicy`` that restricts all user-created pods to the same permissions as their notebook pod.
+- Replace the direct Kubernetes access currently granted to the Notebook Aspect to support Dask with a separate authenticated service as described in SQR-066_.
+- Implement client/server Butler as described in DMTN-176_.
+- Add strong password protection to the tap-schema database (perhaps by moving it to an infrastructure-provided SQL server).
+- Implement CSRF, XSS, and credential leakage protection as discussed in DMTN-193_.
 - Review and improve the logging of Science Platform components with security in mind.
 - Write alerts for unexpected administrative actions and other signs of compromise.
-- Implement CSRF, XSS, and credential leakage protection as discussed in `DMTN-193`_.
 
+.. _SQR-066: https://sqr-066.lsst.io/
+.. _DMTN-176: https://dmtn-176.lsst.io/
 .. _DMTN-193: https://dmtn-193.lsst.io/
 
 Given the wide institutional and geographic diversity of the projected user base and the accompanying lack of management of or visibility into user endpoints, the Science Platform should be designed to assume that some of its users will be compromised at any given time.
@@ -195,6 +199,8 @@ Summary
    +==================+==============================+========+
    | Infrastructure   | :ref:`gap-logging-alerting`  | High   |
    |                  +------------------------------+--------+
+   |                  | :ref:`gap-databases`         | High   |
+   |                  +------------------------------+--------+
    |                  | :ref:`gap-kubernetes`        | Medium |
    |                  +------------------------------+--------+
    |                  | :ref:`gap-patching`          | Medium |
@@ -225,7 +231,9 @@ Summary
    |                  +------------------------------+--------+
    |                  | :ref:`gap-abuse-compute`     | Low    |
    +------------------+------------------------------+--------+
-   | Data security    | :ref:`gap-data-corruption`   | Low    |
+   | Data security    | :ref:`gap-butler-auth`       | High   |
+   |                  +------------------------------+--------+
+   |                  | :ref:`gap-data-corruption`   | Low    |
    |                  +------------------------------+--------+
    |                  | :ref:`gap-data-user`         | Low    |
    |                  +------------------------------+--------+
@@ -259,7 +267,6 @@ Others, particularly third-party applications, show requests coming from the Kub
 Recommendations
 """""""""""""""
 
-- Ensure consolidated logging is maintained in the transition from the Interim Data Facility to the final US Data Facility.
 - Review and improve the logging of Science Platform components with security in mind.
   Some components may need to add additional logging or log in a more structured form to allow for automatic correlation and analysis.
   Some components, particularly third-party components, may need configuration or filtering to locate the most interesting messages.
@@ -267,6 +274,42 @@ Recommendations
 - Write alerts for unexpected administrative actions and other signs of compromise.
   One possible alerting strategy is to route unexpected events to a Slack bot that will query the person who supposedly took that action for confirmation that they indeed took that action, with two-factor authentication confirmation.
   If this is done only for discouraged paths for admin actions, such as direct Kubernetes commands instead of using Argo CD, it doubles as encouragement to use the standard configuration management system.
+
+.. _gap-databases:
+
+Infrastructure databases
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Risk: High**
+
+Several of the services in the Science Platform require an underlying SQL database.
+There are currently two preferred ways to provide those databases: use an external SQL database service provided by the hosting platform (such as Cloud SQL), or run a PostgreSQL container inside the cluster.
+Services that use either of those approaches use randomly-generated, high-entropy passwords.
+
+However, the TAP service uses two underlying in-cluster databases (one for UWS job tracking and one for the TAP schema) that are deployed as stand-alone services.
+Access to these databases is not currently protected by strong passwords.
+
+The database software is not currently routinely patched for any in-cluster databases, either the shared PostgreSQL database or the separate TAP databases.
+
+Mitigations
+"""""""""""
+
+- The general PostgreSQL database uses strong passwords (but not a ``NetworkPolicy``).
+- The UWS database is protected with a ``NetworkPolicy``.
+
+Recommendations
+"""""""""""""""
+
+The best solution to this concern is to require that any hosting provider on which the Science Platform is hosted to provide SQL databases as a service, and to move all underlying SQL databases onto that service.
+This would avoid having to run or patch any additional database servers inside the cluster.
+
+The drawback of this approach is that access to such external databases cannot be limited using a ``NetworkPolicy``, putting more weight on the authentication.
+However, the Interim and Cloud Data Facilities will be hosted on Google Cloud, where network access to Cloud SQL can be limited using Cloud SQL Auth Proxy, Google service accounts, and workload identity.
+
+Until that migration is done, the following recommendations will reduce the risk:
+
+- Use strong passwords for the TAP schema and UWS databases.
+- Add a ``NetworkPolicy`` to control access to the general PostgreSQL database and the TAP schema database.
 
 .. _gap-kubernetes:
 
@@ -289,22 +332,22 @@ Cloud Kubernetes environments, such as that used by the Interim Data Facility, h
 Mitigations
 """""""""""
 
-- Significant progress has been made in standardizing on the Kubernetes hardening configuration documented in `SQR-048`_.
-- The Interim Data Facility is expected to be hosted in a cloud Kubernetes environment, and thus will benefit from the hardening that the cloud provider does by default.
+- ``automountServiceAccountToken`` is set to ``false`` for all pods except those that have a specific need to talk to the Kubernetes API.
+- Most pods have security hardening applied.
+- Most services define a ``NetworkPolicy``.
+- The Interim Data Facility and expected Cloud Data Facility will be hosted in a cloud Kubernetes environment, and thus will benefit from the hardening that the cloud provider does by default.
 - Each application in the Science Platform is isolated in its own namespace.
-
-.. _SQR-048: https://sqr-048.lsst.io/
 
 Recommendations
 """""""""""""""
 
-The following recommendations apply to all Kubernetes environments:
+Implement the remainder of the hardening recommendations documented in SQR-048_.
+Specifically, for all Kubernetes environments:
 
-- Add a cluster-wide ``PodSecurityPolicy`` that enables the generally-desirable hardening options, and enable the Pod Security Policy admission controller.
-  This should disable privileged containers, use a read-only root file system, disable ``hostPath`` mounts on most clusters, disable privilege escalation, disable running containers as root, and restrict capabilities.
-  Services that have to create privileged containers will need a separate ``PodSecurityPolicy`` bound to their service accounts.
-  See the `Kubernetes recommended restricted policy <https://kubernetes.io/docs/concepts/security/pod-security-standards/>`__.
-- Set ``automountServiceAccountToken`` to ``false`` for all service accounts or pods by default, leaving it enabled only for those pods that need to talk to Kubernetes.
+.. _SQR-048: https://sqr-048.lsst.io/
+
+- Implement a cluster-wide default restricted `Pod Security Standard`_ policy enforced with an admission controller.
+  This will force use of pod hardening best practices except for those services that require special exceptions because they need to run privileged containers.
 - Ensure all pods other than special privileged containers are configured to run as a non-root user with privilege escalation and capabilities disabled and a read-only root file system.
 - Define ``NetworkPolicy`` resources for all pods that restrict at least the ingress.
   (Egress restrictions would be ideal but may be too difficult to maintain.)
@@ -313,16 +356,33 @@ The following recommendations apply to all Kubernetes environments:
 - Scan Kubernetes environments for all objects not managed by Argo CD and alert on anything unexpected.
 - Review ``get``, ``list``, and ``watch`` access to secrets and remove it where possible.
 
+The following Phalanx_ applications currently do not follow the pod hardening recommendations:
+
+- portal
+- postgres (internal PostgreSQL server)
+- tap
+- tap-schema
+
+Third-party Helm charts have also not been thoroughly reviewed.
+
+The following Phalanx_ applications do not yet have a ``NetworkPolicy`` defined and should, or if they do have a ``NetworkPolicy``, it is not sufficiently restrictive:
+
+- nublado2 (JupyterHub for the Notebook Aspect)
+- postgres (internal PostgreSQL server)
+- tap-schema
+
+.. _Pod Security Standard: https://kubernetes.io/docs/concepts/security/pod-security-standards/
+
 For the Interim Data Facility hosted on :abbr:`GKE (Google Kubernetes Engine)`, the following additional recommendations have not yet been implemented:
 
 - Restrict cluster discovery permissions to only service accounts plus the Google Cloud Identity organization instead of the default of ``system:authenticated``.
-  (This will be unnecessary if the cluster is made private.)
+  (This will be unnecessary if the cluster is made private, as described in the next bullet point.)
 - Restrict network access to the control plane and nodes.
   This is challenging because the recommended way to do this is to use a VPN to link the Kubernetes network with a corporate network, which poses various challenges.
   However, exposing the cluster to the Internet is a significant increase in attack surface and therefore risk.
   The easiest approach may be a bastion hosted in :abbr:`GCE (Google Compute Engine)`.
 
-See `SQR-048`_ for more details on the Kubernetes hardening recommendations.
+See SQR-048_ for more details on the Kubernetes hardening recommendations.
 
 Also see :ref:`Notebook attacks on services <gap-notebook-cluster>` and :ref:`Notebook privilege escalation <gap-escalation>`.
 
@@ -442,12 +502,12 @@ Dask access for notebooks
 **Risk: High**
 
 Some uses of the Science Platform may involve running compute-intensive tasks that may benefit from being distributed across multiple CPUs.
-In its current implementation, this is provided via the `Dask`_ library and its Kubernetes support.
+In its current implementation, this is provided via the Dask_ library and its Kubernetes support.
 In order to enable this feature, user notebook pods are granted the ability to launch and manage new pods in the user's namespace.
 
 .. _Dask: https://dask.org/
 
-Because there is no current ``PodSecurity`` policy in place, this grants Science Platform users the ability to run arbitrary pods with arbitrary privileges, including privileged pods.
+This currently grants Science Platform users the ability to run arbitrary pods with arbitrary privileges, including privileged pods.
 That in turn could be used to undermine the security of the cluster, since Kubernetes is not hardened against privileged pods.
 
 Also, in order to create the per-user service accounts required to support Dask, JupyterHub has Kuberentes access to create ``RoleBindings``.
@@ -456,16 +516,12 @@ That in turn may allow a compromised JupyterHub service to create a service acco
 Recommendations
 """""""""""""""
 
-Replace the current Dask approach with one of the following alternatives:
+Replace the current Dask approach, and the entire Notebook Aspect lab creation approach, with a lab Kubernetes controller as described in SQR-066_.
+This isolates the privileged Kubernetes access in a separate service and would allow removing all Kubernetes API permissions from user lab pods.
 
-- Add a ``PodSecurity`` policy that restricts all user-created pods to the same permissions as their notebook pod.
-- Provide an API to launch Dask-compatible pods on behalf of the user without giving the user direct access to the required Kubernetes credentials.
-  Provide library support to integrate that pool into a normal Dask workflow.
-- Support this use case of compute-intensive tasks via a separate user batch system rather than via the Science Platform.
-
-The first option would still require giving each Science Platform user direct access to the Kubernetes API and substantial privileges within their namespace, relying only on the ``PodSecurity`` policy to limit possible damage.
-
-The last two options provide better security because they would allow permit removing all Kubernetes access from the Notebook Aspect pods and not mounting a Kubernetes service token in those pods.
+As an additional benefit, this will allow removing all Kubernetes APi permissions from JupyterHub, replacing its direct use of Kubernetes APIs with web service calls to the lab controller.
+While the extensive permissions JupyterHub currently must have are not a serious security concern (an attacker would still have to find a way to compromise JupyterHub first), JupyterHub is a highly complex and user-facing software package.
+Moving permissions from it to a more limited-purpose, hardened web service would provide additional defense in depth.
 
 .. _gap-notebook-cluster:
 
@@ -520,7 +576,7 @@ Kubernetes attempts to allow untrusted workloads to run inside a pod, but is not
 It does not use user namespaces and exposes most of the attack surface of the Linux kernel to code running inside a pod.
 
 Similarly, an attacker may be able to use the Notebook Aspect attack internal Kubernetes APIs and escalate privileges that way.
-See, for example, `CVE-2018-1002105`_.
+See, for example, CVE-2018-1002105_.
 
 .. _CVE-2018-1002105: https://blog.aquasec.com/kubernetes-security-cve-2018-1002105
 
@@ -578,12 +634,14 @@ Recommendations
 This is not a significant concern.
 It's noted here primarily for completeness, and in case we later discover a reason why this is more of an issue than it immediately appeared.
 
-When there is a reasonable opportunity, the spawning process for user notebooks should be modified to
+That said, the spawning process for user notebooks should be modified to
 
 - use ``Secret`` to communicate secrets, and
 - mount those secrets on file system paths rather than injecting them as environment variables.
 
 This will require modifying libraries that use those secrets to use the file system paths instead.
+
+Implementing the design in SQR-066_ will address the first recommendation and make addressing the second recommendation easier.
 
 .. _gaps-software:
 
@@ -690,7 +748,7 @@ CSRF and credential leakage
 Not all Science Platform services are hardened against cross-site request forgery (CSRF) from external sites.
 All Science Platform services are vulnerable to CSRF attacks from other (possibly compromised) Science Platform services because they all share a JavaScript origin.
 
-The current design for authentication for the Rubin Science Platform leaks cookies and user tokens to backend services.
+The current design for authentication for the Science Platform leaks cookies and user tokens to backend services.
 This undermines isolation between services, which could become relevant if a service is compromised.
 
 See `DMTN-193`_ for a complete discussion of web security concerns for the Science Platform.
@@ -923,6 +981,48 @@ This area is less interesting as a direct risk than as a possible attacker goal 
 Data security
 -------------
 
+.. _gap-butler-auth:
+
+Butler data access
+^^^^^^^^^^^^^^^^^^
+
+**Risk: High**
+
+Access to astronomical data in the Science Platform is managed by the Butler_.
+Currently, the only implementation of the Butler is a client-side library that expects to have access to authentication credentials for an underlying database and object store.
+In the Interim Data Facility, for the early Data Previews, every Notebook Aspect user is therefore granted access to the underlying PostgreSQL database and Google Cloud Storage object store via an injected password and Goole service account private key.
+
+.. _Butler: https://arxiv.org/abs/2206.14941
+
+This means that currently there is no meaningful access control for the preview data.
+Any user could in theory alter or delete the database records or underlying data.
+Obviously, this must be replaced before the Science Platform is ready for production access.
+
+Mitigations
+"""""""""""
+
+- Data for the Data Preview is static and backed up, so can be restored from backup if it is damaged by a user.
+- Some of the data stores don't require write access.
+  For those, the access granted to the current Google service account is read-only.
+
+Recommendations
+"""""""""""""""
+
+Part of the access control design of the Science Platform is to not manage infrastructure accounts for each user.
+Access will be done via federated authentication, the Science Platform intentionally does not store the user's primary authentication credentials, and management of user accounts in the underlying hosting environment would add significant complexity.
+This problem therefore should not be solved by giving each user their own Google credentials for access to the underlying object storage.
+
+In addition, the Science Platform should support other underlying object stores provided that they support standard APIs, without requiring the users have direct access to the object store of the underlying hosting facility.
+
+The recommended approach is therefore to replace the client-only Butler library with a client/server model.
+The client would serialize requests to the Butler server, which would authenticate and authorize the user and accept or deny those requests as appropriate.
+Access to the underlying object store would be done via signed links, which provide pre-authenticated, limited-time access to an object without requiring the user authenticate to the underlying data store.
+
+This recommendation is discussed in detail in DMTN-176_, DMTN-169_, and DMTN-182_.
+
+.. _DMTN-169: https://dmtn-169.lsst.io/
+.. _DMTN-182: https://dmtn-182.lsst.io/
+
 .. _gap-data-corruption:
 
 Data corruption
@@ -1049,6 +1149,28 @@ Attempting to defend against this attack proactively is unlikely to be successfu
 
 We should therefore accept this risk.
 
+Use of Kubernetes secrets
+-------------------------
+
+Kubernetes has a built-in secret management interface using ``Secret`` objects.
+This interface provides easy injection of secrets into pods and use of the Kubernetes API to pass secrets between applications.
+It is also well-supported by third-party applications that integrate with long-term secret stores, such as Vault_ (via `Vault Secrets Operator`_).
+
+.. _Vault: https://www.vaultproject.io/
+.. _Vault Secrets Operator: https://github.com/ricoberger/vault-secrets-operator
+
+The drawback of Kubernetes secrets is that they're stored in the Kubernetes control plane, are accessible to any Kubernetes user with the necessary permissions, may or may not be encrypted at rest, and can easily be stolen if the Kubernetes control plane is compromised.
+They are also readily accessible via Kubernetes APIs that may be inobvious, such as by launching a pod in the same namespace and requesting the secret be mounted in the pod.
+Secrets are also provided to the pod via either environment variables or mounted files, both of which are easily accessible to all processes running in the pod.
+
+More sophisticated systems such as Vault can offer more protection for secrets if used directly instead of via Kubernetes secrets.
+Such systems lend themselves to being used with more care, such as by retrieving secrets only when necessary, storing them only in memory of a given process, and discarding them when they're no longer needed.
+
+However, the additional risk of using Kubernetes secrets is small and comparable to other risks around credential management that we're already accepting.
+The cost of a more sophisticated secret management system is relatively high, requiring injecting custom code into most applications and, depending on how thoroughly an alternate policy would be implemented, modifying third-party software used by the Science Platform.
+
+Given the relatively low risk and relatively high cost of alternatives, we should accept this risk.
+
 .. _glossary:
 
 Glossary
@@ -1121,6 +1243,17 @@ References
 
 Changes
 =======
+
+2022-10-10
+----------
+
+- Add :ref:`Infrastructure data stores <gap-databases>` and mark it high risk.
+- Add :ref:`Butler data access <gap-butler-auth>` and mark it high risk.
+- Replace the recommendations section for :ref:`Dask access for notebooks <gap-dask>` with a reference to SQR-066_, and note SQR-066_ in discussions of other security recommendations that it would address.
+- Add a discussion of Kubernetes secrets to :ref:`accepted-risks`.
+- Replace references to ``PodSecurityPolicy`` (which has been deprecated) with references to the ``PodSecurity`` admission controller and Pod Security Standards.
+- Add a list of services that need work on pod hardening or ``NetworkPolicy``.
+- Reference the authentication and authorization document series for more details about user authentication.
 
 2021-12-17
 ----------
