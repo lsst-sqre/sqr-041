@@ -1,7 +1,5 @@
 :tocdepth: 1
 
-.. sectnum::
-
 .. _abstract:
 
 Abstract
@@ -19,10 +17,10 @@ This tech note proposes a threat model for analyzing the security risks of the S
 Scope
 =====
 
-This security risk assessment covers the Science Platform as defined by `LDM-542`_ and `LDM-554`_.
+This security risk assessment covers the Science Platform as defined by LDM-542_ and LDM-554_.
 It discusses Vera C. Rubin Observatory infrastructure only insofar as it supports the Science Platform and does not analyze the security of other project facilities.
 It also does not cover other installations of the Notebook Aspect of the Science Platform outside of the Science Platform itself, such as at the Summit facility or the various project-internal test facilities.
-For a related discussion of internal services maintained by the Science Quality and Reliability Engineering team, see `SQR-037`_.
+For a related discussion of internal services maintained by the Science Quality and Reliability Engineering team, see SQR-037_.
 
 .. _LDM-542: https://ldm-542.lsst.io/
 .. _LDM-554: https://ldm-554.lsst.io/
@@ -31,17 +29,13 @@ For a related discussion of internal services maintained by the Science Quality 
 This risk assessment only covers risks associated with the data that will be released for general users of the Science Platform.
 It does not discuss security risks of data and processing prior to or not included in that data release, such as prompt processing, unreleased raw images, security of the telescope itself and its related support equipment, or transfer of data to repositories used by the Science Pipeline.
 
-The authentication and authorization model for the Science Platform is still under development.
-(See `SQR-039`_, `SQR-044`_, `SQR-045`_, `SQR-046`_, `SQR-049`_, and `SQR-055`_ for current discussion.)
-This risk assessment therefore only deals with authentication and authorization at a high level and in generic terms.
-It will be revised to include a specific analysis of the authentication and authorization system as implemented once that implementation becomes more concrete.
+The authentication and authorization model for the Science Platform is discussed in detail in DMTN-234_, DMTN-224_, and SQR-069_.
+Those details will not be repeated here; instead, only known issues and limitations that affect the overall security of the platform will be noted.
+For a much deeper analysis of authentication and authorization, see those documents.
 
-.. _SQR-039: https://sqr-039.lsst.io/
-.. _SQR-044: https://sqr-044.lsst.io/
-.. _SQR-045: https://sqr-045.lsst.io/
-.. _SQR-046: https://sqr-046.lsst.io/
-.. _SQR-049: https://sqr-049.lsst.io/
-.. _SQR-055: https://sqr-055.lsst.io/
+.. _DMTN-234: https://dmtn-234.lsst.io/
+.. _DMTN-224: https://dmtn-224.lsst.io/
+.. _SQR-069: https://sqr-069.lsst.io/
 
 .. _summary:
 
