@@ -51,11 +51,12 @@ Within that framework, the security gaps that pose the highest risk are:
 
 The top recommendations for improving the Science Platform's security posture are:
 
-- Replace Dask's direct Kubernetes access with a separate authenticated service, or add a ``PodSecurityPolicy`` that restricts all user-created pods to the same permissions as their notebook pod.
+- Replace the direct Kubernetes access currently granted to the Notebook Aspect to support Dask with a separate authenticated service as described in SQR-066_.
+- Implement CSRF, XSS, and credential leakage protection as discussed in DMTN-193_.
 - Review and improve the logging of Science Platform components with security in mind.
 - Write alerts for unexpected administrative actions and other signs of compromise.
-- Implement CSRF, XSS, and credential leakage protection as discussed in `DMTN-193`_.
 
+.. _SQR-066: https://sqr-066.lsst.io/
 .. _DMTN-193: https://dmtn-193.lsst.io/
 
 Given the wide institutional and geographic diversity of the projected user base and the accompanying lack of management of or visibility into user endpoints, the Science Platform should be designed to assume that some of its users will be compromised at any given time.
@@ -436,12 +437,12 @@ Dask access for notebooks
 **Risk: High**
 
 Some uses of the Science Platform may involve running compute-intensive tasks that may benefit from being distributed across multiple CPUs.
-In its current implementation, this is provided via the `Dask`_ library and its Kubernetes support.
+In its current implementation, this is provided via the Dask_ library and its Kubernetes support.
 In order to enable this feature, user notebook pods are granted the ability to launch and manage new pods in the user's namespace.
 
 .. _Dask: https://dask.org/
 
-Because there is no current ``PodSecurity`` policy in place, this grants Science Platform users the ability to run arbitrary pods with arbitrary privileges, including privileged pods.
+This currently grants Science Platform users the ability to run arbitrary pods with arbitrary privileges, including privileged pods.
 That in turn could be used to undermine the security of the cluster, since Kubernetes is not hardened against privileged pods.
 
 Also, in order to create the per-user service accounts required to support Dask, JupyterHub has Kuberentes access to create ``RoleBindings``.
@@ -450,16 +451,12 @@ That in turn may allow a compromised JupyterHub service to create a service acco
 Recommendations
 """""""""""""""
 
-Replace the current Dask approach with one of the following alternatives:
+Replace the current Dask approach, and the entire Notebook Aspect lab creation approach, with a lab Kubernetes controller as described in SQR-066_.
+This isolates the privileged Kubernetes access in a separate service and would allow removing all Kubernetes API permissions from user lab pods.
 
-- Add a ``PodSecurity`` policy that restricts all user-created pods to the same permissions as their notebook pod.
-- Provide an API to launch Dask-compatible pods on behalf of the user without giving the user direct access to the required Kubernetes credentials.
-  Provide library support to integrate that pool into a normal Dask workflow.
-- Support this use case of compute-intensive tasks via a separate user batch system rather than via the Science Platform.
-
-The first option would still require giving each Science Platform user direct access to the Kubernetes API and substantial privileges within their namespace, relying only on the ``PodSecurity`` policy to limit possible damage.
-
-The last two options provide better security because they would allow permit removing all Kubernetes access from the Notebook Aspect pods and not mounting a Kubernetes service token in those pods.
+As an additional benefit, this will allow removing all Kubernetes APi permissions from JupyterHub, replacing its direct use of Kubernetes APIs with web service calls to the lab controller.
+While the extensive permissions JupyterHub currently must have are not a serious security concern (an attacker would still have to find a way to compromise JupyterHub first), JupyterHub is a highly complex and user-facing software package.
+Moving permissions from it to a more limited-purpose, hardened web service would provide additional defense in depth.
 
 .. _gap-notebook-cluster:
 
@@ -514,7 +511,7 @@ Kubernetes attempts to allow untrusted workloads to run inside a pod, but is not
 It does not use user namespaces and exposes most of the attack surface of the Linux kernel to code running inside a pod.
 
 Similarly, an attacker may be able to use the Notebook Aspect attack internal Kubernetes APIs and escalate privileges that way.
-See, for example, `CVE-2018-1002105`_.
+See, for example, CVE-2018-1002105_.
 
 .. _CVE-2018-1002105: https://blog.aquasec.com/kubernetes-security-cve-2018-1002105
 
@@ -572,12 +569,14 @@ Recommendations
 This is not a significant concern.
 It's noted here primarily for completeness, and in case we later discover a reason why this is more of an issue than it immediately appeared.
 
-When there is a reasonable opportunity, the spawning process for user notebooks should be modified to
+That said, the spawning process for user notebooks should be modified to
 
 - use ``Secret`` to communicate secrets, and
 - mount those secrets on file system paths rather than injecting them as environment variables.
 
 This will require modifying libraries that use those secrets to use the file system paths instead.
+
+Implementing the design in SQR-066_ will address the first recommendation and make addressing the second recommendation easier.
 
 .. _gaps-software:
 
