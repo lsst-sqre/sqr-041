@@ -1065,6 +1065,28 @@ Attempting to defend against this attack proactively is unlikely to be successfu
 
 We should therefore accept this risk.
 
+Use of Kubernetes secrets
+-------------------------
+
+Kubernetes has a built-in secret management interface using ``Secret`` objects.
+This interface provides easy injection of secrets into pods and use of the Kubernetes API to pass secrets between applications.
+It is also well-supported by third-party applications that integrate with long-term secret stores, such as Vault_ (via Vault Secrets Operator_).
+
+.. _Vault: https://www.vaultproject.io/
+.. _Vault Secrets Operator: https://github.com/ricoberger/vault-secrets-operator
+
+The drawback of Kubernetes secrets is that they're stored in the Kubernetes control plane, are accessible to any Kubernetes user with the necessary permissions, may or may not be encrypted at rest, and can easily be stolen if the Kubernetes control plane is compromised.
+They are also readily accessible via Kubernetes APIs that may be inobvious, such as by launching a pod in the same namespace and requesting the secret be mounted in the pod.
+Secrets are also provided to the pod via either environment variables or mounted files, both of which are easily accessible to all processes running in the pod.
+
+More sophisticated systems such as Vault can offer more protection for secrets if used directly instead of via Kubernetes secrets.
+Such systems lend themselves to being used with more care, such as by retrieving secrets only when necessary, storing them only in memory of a given process, and discarding them when they're no longer needed.
+
+However, the additional risk of using Kubernetes secrets is small and comparable to other risks around credential management that we're already accepting.
+The cost of a more sophisticated secret management system is relatively high, requiring injecting custom code into most applications and, depending on how thoroughly an alternate policy would be implemented, modifying third-party software used by the Rubin Science Platform.
+
+Given the relatively low risk and relatively high cost of alternatives, we should accept this risk.
+
 .. _glossary:
 
 Glossary
