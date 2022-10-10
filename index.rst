@@ -12,7 +12,7 @@ An estimated 10,000 users from a wide variety of institutions will have Science 
 
 This tech note proposes a threat model for analyzing the security risks of the Science Platform, catalogs known gaps under that threat model, and recommends mitigations for those gaps.
 
-The configuration discussed in this tech note is implemented by Phalanx_, the Kubernetes configuration for the Rubin Science Platform.
+The configuration discussed in this tech note is implemented by Phalanx_, the Kubernetes configuration for the Science Platform.
 
 .. _Phalanx: https://phalanx.lsst.io/
 
@@ -51,6 +51,7 @@ Within that framework, the security gaps that pose the highest risk are:
 
 - :ref:`Dask access for notebooks <gap-dask>`
 - :ref:`Butler data access <gap-butler-auth>`
+- :ref:`Infrastructure data stores <gap-databases>`
 - :ref:`CSRF and credential leakage <gap-csrf>`
 - :ref:`Logging and alerting <gap-logging-alerting>`
 
@@ -58,6 +59,7 @@ The top recommendations for improving the Science Platform's security posture ar
 
 - Replace the direct Kubernetes access currently granted to the Notebook Aspect to support Dask with a separate authenticated service as described in SQR-066_.
 - Implement client/server Butler as described in DMTN-176_.
+- Add strong password protection to the tap-schema database (perhaps by moving it to an infrastructure-provided SQL server).
 - Implement CSRF, XSS, and credential leakage protection as discussed in DMTN-193_.
 - Review and improve the logging of Science Platform components with security in mind.
 - Write alerts for unexpected administrative actions and other signs of compromise.
@@ -197,6 +199,8 @@ Summary
    +==================+==============================+========+
    | Infrastructure   | :ref:`gap-logging-alerting`  | High   |
    |                  +------------------------------+--------+
+   |                  | :ref:`gap-databases`         | High   |
+   |                  +------------------------------+--------+
    |                  | :ref:`gap-kubernetes`        | Medium |
    |                  +------------------------------+--------+
    |                  | :ref:`gap-patching`          | Medium |
@@ -263,7 +267,6 @@ Others, particularly third-party applications, show requests coming from the Kub
 Recommendations
 """""""""""""""
 
-- Ensure consolidated logging is maintained in the transition from the Interim Data Facility to the final US Data Facility.
 - Review and improve the logging of Science Platform components with security in mind.
   Some components may need to add additional logging or log in a more structured form to allow for automatic correlation and analysis.
   Some components, particularly third-party components, may need configuration or filtering to locate the most interesting messages.
@@ -271,6 +274,42 @@ Recommendations
 - Write alerts for unexpected administrative actions and other signs of compromise.
   One possible alerting strategy is to route unexpected events to a Slack bot that will query the person who supposedly took that action for confirmation that they indeed took that action, with two-factor authentication confirmation.
   If this is done only for discouraged paths for admin actions, such as direct Kubernetes commands instead of using Argo CD, it doubles as encouragement to use the standard configuration management system.
+
+.. _gap-databases:
+
+Infrastructure databases
+------------------------
+
+**Risk: High**
+
+Several of the services in the Science Platform require an underlying SQL database.
+There are currently two preferred ways to provide those databases: use an external SQL database service provided by the hosting platform (such as Cloud SQL), or run a PostgreSQL container inside the cluster.
+Services that use either of those approaches use randomly-generated, high-entropy passwords.
+
+However, the TAP service uses two underlying in-cluster databases (one for UWS job tracking and one for the TAP schema) that are deployed as stand-alone services.
+Access to these databases is not currently protected by strong passwords.
+
+The database software is not currently routinely patched for any in-cluster databases, either the shared PostgreSQL database or the separate TAP databases.
+
+Mitigations
+"""""""""""
+
+- The general PostgreSQL database uses strong passwords (but not a ``NetworkPolicy``).
+- The UWS database is protected with a ``NetworkPolicy``.
+
+Recommendations
+"""""""""""""""
+
+The best solution to this concern is to require that any hosting provider on which the Science Platform is hosted to provide SQL databases as a service, and to move all underlying SQL databases onto that service.
+This would avoid having to run or patch any additional database servers inside the cluster.
+
+The drawback of this approach is that access to such external databases cannot be limited using a ``NetworkPolicy``, putting more weight on the authentication.
+However, the Interim and Cloud Data Facilities will be hosted on Google Cloud, where network access to Cloud SQL can be limited using Cloud SQL Auth Proxy, Google service accounts, and workload identity.
+
+Until that migration is done, the following recommendations will reduce the risk:
+
+- Use strong passwords for the TAP schema and UWS databases.
+- Add a ``NetworkPolicy`` to control access to the general PostgreSQL database and the TAP schema database.
 
 .. _gap-kubernetes:
 
@@ -328,9 +367,7 @@ Third-party Helm charts have also not been thoroughly reviewed.
 
 The following Phalanx_ applications do not yet have a ``NetworkPolicy`` defined and should, or if they do have a ``NetworkPolicy``, it is not sufficiently restrictive:
 
-- noteburst
 - nublado2 (JupyterHub for the Notebook Aspect)
-- plot-navigator
 - postgres (internal PostgreSQL server)
 - tap-schema
 
@@ -711,7 +748,7 @@ CSRF and credential leakage
 Not all Science Platform services are hardened against cross-site request forgery (CSRF) from external sites.
 All Science Platform services are vulnerable to CSRF attacks from other (possibly compromised) Science Platform services because they all share a JavaScript origin.
 
-The current design for authentication for the Rubin Science Platform leaks cookies and user tokens to backend services.
+The current design for authentication for the Science Platform leaks cookies and user tokens to backend services.
 This undermines isolation between services, which could become relevant if a service is compromised.
 
 See `DMTN-193`_ for a complete discussion of web security concerns for the Science Platform.
@@ -951,7 +988,7 @@ Butler data access
 
 **Risk: High**
 
-Access to astronomical data in the Rubin Science Platform is managed by the Butler_.
+Access to astronomical data in the Science Platform is managed by the Butler_.
 Currently, the only implementation of the Butler is a client-side library that expects to have access to authentication credentials for an underlying database and object store.
 In the Interim Data Facility, for the early Data Previews, every Notebook Aspect user is therefore granted access to the underlying PostgreSQL database and Google Cloud Storage object store via an injected password and Goole service account private key.
 
@@ -959,7 +996,7 @@ In the Interim Data Facility, for the early Data Previews, every Notebook Aspect
 
 This means that currently there is no meaningful access control for the preview data.
 Any user could in theory alter or delete the database records or underlying data.
-Obviously, this must be replaced before the Rubin Science Platform is ready for production access.
+Obviously, this must be replaced before the Science Platform is ready for production access.
 
 Mitigations
 """""""""""
@@ -1130,7 +1167,7 @@ More sophisticated systems such as Vault can offer more protection for secrets i
 Such systems lend themselves to being used with more care, such as by retrieving secrets only when necessary, storing them only in memory of a given process, and discarding them when they're no longer needed.
 
 However, the additional risk of using Kubernetes secrets is small and comparable to other risks around credential management that we're already accepting.
-The cost of a more sophisticated secret management system is relatively high, requiring injecting custom code into most applications and, depending on how thoroughly an alternate policy would be implemented, modifying third-party software used by the Rubin Science Platform.
+The cost of a more sophisticated secret management system is relatively high, requiring injecting custom code into most applications and, depending on how thoroughly an alternate policy would be implemented, modifying third-party software used by the Science Platform.
 
 Given the relatively low risk and relatively high cost of alternatives, we should accept this risk.
 
