@@ -50,17 +50,20 @@ Security efforts for the Science Platform should focus on closing known vulnerab
 Within that framework, the security gaps that pose the highest risk are:
 
 - :ref:`Dask access for notebooks <gap-dask>`
-- :ref:`Logging and alerting <gap-logging-alerting>`
+- :ref:`Butler data access <gap-butler-auth>`
 - :ref:`CSRF and credential leakage <gap-csrf>`
+- :ref:`Logging and alerting <gap-logging-alerting>`
 
 The top recommendations for improving the Science Platform's security posture are:
 
 - Replace the direct Kubernetes access currently granted to the Notebook Aspect to support Dask with a separate authenticated service as described in SQR-066_.
+- Implement client/server Butler as described in DMTN-176_.
 - Implement CSRF, XSS, and credential leakage protection as discussed in DMTN-193_.
 - Review and improve the logging of Science Platform components with security in mind.
 - Write alerts for unexpected administrative actions and other signs of compromise.
 
 .. _SQR-066: https://sqr-066.lsst.io/
+.. _DMTN-176: https://dmtn-176.lsst.io/
 .. _DMTN-193: https://dmtn-193.lsst.io/
 
 Given the wide institutional and geographic diversity of the projected user base and the accompanying lack of management of or visibility into user endpoints, the Science Platform should be designed to assume that some of its users will be compromised at any given time.
@@ -224,7 +227,9 @@ Summary
    |                  +------------------------------+--------+
    |                  | :ref:`gap-abuse-compute`     | Low    |
    +------------------+------------------------------+--------+
-   | Data security    | :ref:`gap-data-corruption`   | Low    |
+   | Data security    | :ref:`gap-butler-auth`       | High   |
+   |                  +------------------------------+--------+
+   |                  | :ref:`gap-data-corruption`   | Low    |
    |                  +------------------------------+--------+
    |                  | :ref:`gap-data-user`         | Low    |
    |                  +------------------------------+--------+
@@ -939,6 +944,48 @@ This area is less interesting as a direct risk than as a possible attacker goal 
 Data security
 -------------
 
+.. _gap-butler-auth:
+
+Butler data access
+^^^^^^^^^^^^^^^^^^
+
+**Risk: High**
+
+Access to astronomical data in the Rubin Science Platform is managed by the Butler_.
+Currently, the only implementation of the Butler is a client-side library that expects to have access to authentication credentials for an underlying database and object store.
+In the Interim Data Facility, for the early Data Previews, every Notebook Aspect user is therefore granted access to the underlying PostgreSQL database and Google Cloud Storage object store via an injected password and Goole service account private key.
+
+.. _Butler: https://arxiv.org/abs/2206.14941
+
+This means that currently there is no meaningful access control for the preview data.
+Any user could in theory alter or delete the database records or underlying data.
+Obviously, this must be replaced before the Rubin Science Platform is ready for production access.
+
+Mitigations
+"""""""""""
+
+- Data for the Data Preview is static and backed up, so can be restored from backup if it is damaged by a user.
+- Some of the data stores don't require write access.
+  For those, the access granted to the current Google service account is read-only.
+
+Recommendations
+"""""""""""""""
+
+Part of the access control design of the Science Platform is to not manage infrastructure accounts for each user.
+Access will be done via federated authentication, the Science Platform intentionally does not store the user's primary authentication credentials, and management of user accounts in the underlying hosting environment would add significant complexity.
+This problem therefore should not be solved by giving each user their own Google credentials for access to the underlying object storage.
+
+In addition, the Science Platform should support other underlying object stores provided that they support standard APIs, without requiring the users have direct access to the object store of the underlying hosting facility.
+
+The recommended approach is therefore to replace the client-only Butler library with a client/server model.
+The client would serialize requests to the Butler server, which would authenticate and authorize the user and accept or deny those requests as appropriate.
+Access to the underlying object store would be done via signed links, which provide pre-authenticated, limited-time access to an object without requiring the user authenticate to the underlying data store.
+
+This recommendation is discussed in detail in DMTN-176_, DMTN-169_, and DMTN-182_.
+
+.. _DMTN-169: https://dmtn-169.lsst.io/
+.. _DMTN-182: https://dmtn-182.lsst.io/
+
 .. _gap-data-corruption:
 
 Data corruption
@@ -1070,7 +1117,7 @@ Use of Kubernetes secrets
 
 Kubernetes has a built-in secret management interface using ``Secret`` objects.
 This interface provides easy injection of secrets into pods and use of the Kubernetes API to pass secrets between applications.
-It is also well-supported by third-party applications that integrate with long-term secret stores, such as Vault_ (via Vault Secrets Operator_).
+It is also well-supported by third-party applications that integrate with long-term secret stores, such as Vault_ (via `Vault Secrets Operator`_).
 
 .. _Vault: https://www.vaultproject.io/
 .. _Vault Secrets Operator: https://github.com/ricoberger/vault-secrets-operator
