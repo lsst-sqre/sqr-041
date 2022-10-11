@@ -1171,6 +1171,24 @@ The cost of a more sophisticated secret management system is relatively high, re
 
 Given the relatively low risk and relatively high cost of alternatives, we should accept this risk.
 
+.. _upcoming:
+
+Upcoming work
+=============
+
+Some services have not yet been implemented, and thus do not currently pose security risks, but are part of the roadmap for the Science Platform.
+When implemented, they should take into account the security risks discussed below.
+
+- Currently, TAP is a read-only service.
+  However, we expect to add write access to TAP in the future to allow the user to create and populate their own database tables and use them in TAP queries, including with joins to project-wide tables.
+  Write access to those tables must follow the general authentication and access control design, including group-based access control.
+  Proper access control will likely require ADQL rewriting in the TAP service or its underlying infrastructure.
+
+  These user-created tables will have to be integrated into the TAP schema in some way so that they can be used from the Portal Aspect and other clients that rely on the TAP schema to discover available tables.
+
+  The access control concerns for database workspaces are very similar to the access control concerns for Butler collections.
+  The discussion in DMTN-182_ therefore partly applies to writable TAP tables as well, and a similar approach to access control should probably be taken.
+
 .. _glossary:
 
 Glossary
